@@ -5,4 +5,3 @@ teacher_forcing_ratio = 1.0
 save_dir = 'data/save'
 corpus_name = "cornell movie-dialogs corpus"
 corpus = os.path.join("data", corpus_name)
-datafile = os.path.join(corpus, "formatted_movie_lines.txt")

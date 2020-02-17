@@ -1,12 +1,10 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch import optim
 import torch.backends.cudnn as cudnn
 
 import itertools
 import random
-import math
 import os
 from load import voc
 from load import pairs
@@ -24,40 +22,33 @@ cudnn.benchmark = True
 # Prepare Data for Models
 # -----------------------
 #
-# Although we have put a great deal of effort into preparing and massaging our
-# data into a nice vocabulary object and list of sentence pairs, our models
-# will ultimately expect numerical torch tensors as inputs. One way to
-# prepare the processed data for the models can be found in the `seq2seq
-# translation
-# tutorial <https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html>`__.
-# In that tutorial, we use a batch size of 1, meaning that all we have to
-# do is convert the words in our sentence pairs to their corresponding
+# One way to prepare the processed data for the models can be found in the
+# `seq2seq translation tutorial
+# <https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html>`__.
+# In that tutorial, it uses a batch size of 1, meaning that all the program
+# needs to do is convert the words in the sentence pairs to their corresponding
 # indexes from the vocabulary and feed this to the models.
 #
-# However, if you’re interested in speeding up training and/or would like
-# to leverage GPU parallelization capabilities, you will need to train
-# with mini-batches.
-#
-# Using mini-batches also means that we must be mindful of the variation
-# of sentence length in our batches. To accomodate sentences of different
-# sizes in the same batch, we will make our batched input tensor of shape
+# Using mini-batches also means that you must be mindful of the variation
+# of sentence length in your batches. To accomodate sentences of different
+# sizes in the same batch, you will need to make the batched input tensor of shape
 # *(max_length, batch_size)*, where sentences shorter than the
 # *max_length* are zero padded after an *EOS_token*.
 #
-# If we simply convert our English sentences to tensors by converting
-# words to their indexes(\ ``indexesFromSentence``) and zero-pad, our
+# If you simply convert your English sentences to tensors by converting
+# words to their indexes(\ ``indexesFromSentence``) and zero-pad, the
 # tensor would have shape *(batch_size, max_length)* and indexing the
 # first dimension would return a full sequence across all time-steps.
-# However, we need to be able to index our batch along time, and across
-# all sequences in the batch. Therefore, we transpose our input batch
+# However, you need to be able to index the batch along time, and across
+# all sequences in the batch. Therefore, you transpose the input batch
 # shape to *(max_length, batch_size)*, so that indexing across the first
-# dimension returns a time step across all sentences in the batch. We
+# dimension returns a time step across all sentences in the batch. It will
 # handle this transpose implicitly in the ``zeroPadding`` function.
 #
 # The ``inputVar`` function handles the process of converting sentences to
 # tensor, ultimately creating a correctly shaped zero-padded tensor. It
 # also returns a tensor of ``lengths`` for each of the sequences in the
-# batch which will be passed to our decoder later.
+# batch which will be passed to the decoder later.
 #
 # The ``outputVar`` function performs a similar function to ``inputVar``,
 # but instead of returning a ``lengths`` tensor, it returns a binary mask
@@ -135,9 +126,9 @@ print("max_target_len:", max_target_len)
 # Masked loss
 # ~~~~~~~~~~~
 #
-# Since we are dealing with batches of padded sequences, we cannot simply
-# consider all elements of the tensor when calculating loss. We define
-# ``maskNLLLoss`` to calculate our loss based on our decoder’s output
+# Since the program is dealing with batches of padded sequences, it cannot simply
+# consider all elements of the tensor when calculating loss.
+# ``maskNLLLoss`` is used to calculate the loss based on the decoder’s output
 # tensor, the target tensor, and a binary mask tensor describing the
 # padding of the target tensor. This loss function calculates the average
 # negative log likelihood of the elements that correspond to a *1* in the
@@ -159,23 +150,23 @@ def maskNLLLoss(inp, target, mask):
 # The ``train`` function contains the algorithm for a single training
 # iteration (a single batch of inputs).
 #
-# We will use a couple of clever tricks to aid in convergence:
+# The program will use a couple of clever tricks to aid in convergence:
 #
 # -  The first trick is using **teacher forcing**. This means that at some
-#    probability, set by ``teacher_forcing_ratio``, we use the current
+#    probability, set by ``teacher_forcing_ratio``, it uses the current
 #    target word as the decoder’s next input rather than using the
 #    decoder’s current guess. This technique acts as training wheels for
 #    the decoder, aiding in more efficient training. However, teacher
 #    forcing can lead to model instability during inference, as the
 #    decoder may not have a sufficient chance to truly craft its own
-#    output sequences during training. Thus, we must be mindful of how we
+#    output sequences during training. Thus, you must be mindful of how you
 #    are setting the ``teacher_forcing_ratio``, and not be fooled by fast
 #    convergence.
 #
-# -  The second trick that we implement is **gradient clipping**. This is
+# -  The second trick that it implements is **gradient clipping**. This is
 #    a commonly used technique for countering the “exploding gradient”
 #    problem. In essence, by clipping or thresholding gradients to a
-#    maximum value, we prevent the gradients from growing exponentially
+#    maximum value, it prevents the gradients from growing exponentially
 #    and either overflow (NaN), or overshoot steep cliffs in the cost
 #    function.
 #
@@ -196,72 +187,13 @@ def maskNLLLoss(inp, target, mask):
 #
 #   PyTorch’s RNN modules (``RNN``, ``LSTM``, ``GRU``) can be used like any
 #   other non-recurrent layers by simply passing them the entire input
-#   sequence (or batch of sequences). We use the ``GRU`` layer like this in
+#   sequence (or batch of sequences). It uses the ``GRU`` layer like this in
 #   the ``encoder``. The reality is that under the hood, there is an
 #   iterative process looping over each time step calculating hidden states.
-#   Alternatively, you ran run these modules one time-step at a time. In
-#   this case, we manually loop over the sequences during the training
-#   process like we must do for the ``decoder`` model. As long as you
-#   maintain the correct conceptual model of these modules, implementing
-#   sequential models can be very straightforward.
+#   Alternatively, you can run these modules one time-step at a time. In
+#   this case, it manually loop over the sequences during the training
+#   process like it has to do for the ``decoder`` model.
 #
-#
-
-######################################################################
-# Single training iteration
-# ~~~~~~~~~~~~~~~~~~~~~~~~~
-#
-# The ``train`` function contains the algorithm for a single training
-# iteration (a single batch of inputs).
-#
-# We will use a couple of clever tricks to aid in convergence:
-#
-# -  The first trick is using **teacher forcing**. This means that at some
-#    probability, set by ``teacher_forcing_ratio``, we use the current
-#    target word as the decoder’s next input rather than using the
-#    decoder’s current guess. This technique acts as training wheels for
-#    the decoder, aiding in more efficient training. However, teacher
-#    forcing can lead to model instability during inference, as the
-#    decoder may not have a sufficient chance to truly craft its own
-#    output sequences during training. Thus, we must be mindful of how we
-#    are setting the ``teacher_forcing_ratio``, and not be fooled by fast
-#    convergence.
-#
-# -  The second trick that we implement is **gradient clipping**. This is
-#    a commonly used technique for countering the “exploding gradient”
-#    problem. In essence, by clipping or thresholding gradients to a
-#    maximum value, we prevent the gradients from growing exponentially
-#    and either overflow (NaN), or overshoot steep cliffs in the cost
-#    function.
-#
-#
-# **Sequence of Operations:**
-#
-#    1) Forward pass entire input batch through encoder.
-#    2) Initialize decoder inputs as SOS_token, and hidden state as the encoder's final hidden state.
-#    3) Forward input batch sequence through decoder one time step at a time.
-#    4) If teacher forcing: set next decoder input as the current target; else: set next decoder input as current decoder output.
-#    5) Calculate and accumulate loss.
-#    6) Perform backpropagation.
-#    7) Clip gradients.
-#    8) Update encoder and decoder model parameters.
-#
-#
-# .. Note ::
-#
-#   PyTorch’s RNN modules (``RNN``, ``LSTM``, ``GRU``) can be used like any
-#   other non-recurrent layers by simply passing them the entire input
-#   sequence (or batch of sequences). We use the ``GRU`` layer like this in
-#   the ``encoder``. The reality is that under the hood, there is an
-#   iterative process looping over each time step calculating hidden states.
-#   Alternatively, you ran run these modules one time-step at a time. In
-#   this case, we manually loop over the sequences during the training
-#   process like we must do for the ``decoder`` model. As long as you
-#   maintain the correct conceptual model of these modules, implementing
-#   sequential models can be very straightforward.
-#
-#
-
 
 def train(input_variable, lengths, target_variable, mask, max_target_len, encoder, decoder, embedding,
           encoder_optimizer, decoder_optimizer, batch_size, clip, max_length=MAX_LENGTH):
@@ -291,7 +223,7 @@ def train(input_variable, lengths, target_variable, mask, max_target_len, encode
     # Set initial decoder hidden state to the encoder's final hidden state
     decoder_hidden = encoder_hidden[:decoder.n_layers]
 
-    # Determine if we are using teacher forcing this iteration
+    # Determine if it is using teacher forcing this iteration
     use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
 
     # Forward batch of sequences through decoder one time step at a time
@@ -337,19 +269,17 @@ def train(input_variable, lengths, target_variable, mask, max_target_len, encode
 ######################################################################
 # Training iterations
 # ~~~~~~~~~~~~~~~~~~~
-#
-# It is finally time to tie the full training procedure together with the
-# data. The ``trainIters`` function is responsible for running
+# The ``trainIters`` function is responsible for running
 # ``n_iterations`` of training given the passed models, optimizers, data,
-# etc. This function is quite self explanatory, as we have done the heavy
+# etc. This function is quite self explanatory, as the program has done the heavy
 # lifting with the ``train`` function.
 #
-# One thing to note is that when we save our model, we save a tarball
+# One thing to note is that when you save the model, you save a tarball
 # containing the encoder and decoder state_dicts (parameters), the
 # optimizers’ state_dicts, the loss, the iteration, etc. Saving the model
 # in this way will give us the ultimate flexibility with the checkpoint.
-# After loading a checkpoint, we will be able to use the model parameters
-# to run inference, or we can continue training right where we left off.
+# After loading a checkpoint, you will be able to use the model parameters
+# to run inference, or you can continue training right where you left off.
 #
 
 def trainIters(model_name, voc, pairs, encoder, decoder, encoder_optimizer, decoder_optimizer, embedding, encoder_n_layers, decoder_n_layers, save_dir, n_iteration, batch_size, print_every, save_every, clip, corpus_name, loadFilename):
@@ -400,9 +330,9 @@ def trainIters(model_name, voc, pairs, encoder, decoder, encoder_optimizer, deco
 
 ######################################################################
 # Another tactic that is beneficial to achieving faster convergence during
-# training is trimming rarely used words out of our vocabulary. Decreasing
+# training is trimming rarely used words out of it's vocabulary. Decreasing
 # the feature space will also soften the difficulty of the function that
-# the model must learn to approximate. We will do this as a two-step
+# the model must learn to approximate. It will do this as a two-step
 # process:
 #
 # 1) Trim words used under ``MIN_COUNT`` threshold using the ``voc.trim``
@@ -448,11 +378,9 @@ pairs = trimRareWords(voc, pairs, MIN_COUNT)
 # Run Model
 # ---------
 #
-# Finally, it is time to run our model!
-#
-# Regardless of whether we want to train or test the chatbot model, we
+# Regardless of whether you want to train or test the chatbot model, you
 # must initialize the individual encoder and decoder models. In the
-# following block, we set our desired configurations, choose to start from
+# following block, you can set your desired configurations, choose to start from
 # scratch or set a checkpoint to load from, and build and initialize the
 # models. Feel free to play with different model configurations to
 # optimize performance.
@@ -513,8 +441,8 @@ print('Models built and ready to go!')
 #
 # Run the following block if you want to train the model.
 #
-# First we set training parameters, then we initialize our optimizers, and
-# finally we call the ``trainIters`` function to run our training
+# First set training parameters, then it initializes the optimizers, and
+# finally call the ``trainIters`` function to run the training
 # iterations.
 #
 
@@ -555,4 +483,3 @@ print("Starting Training!")
 trainIters(model_name, voc, pairs, encoder, decoder, encoder_optimizer, decoder_optimizer,
            embedding, encoder_n_layers, decoder_n_layers, save_dir, n_iteration, batch_size,
            print_every, save_every, clip, corpus_name, loadFilename)
-

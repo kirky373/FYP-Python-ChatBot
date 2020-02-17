@@ -3,18 +3,18 @@
 # -----------------
 #
 # After training a model, we want to be able to talk to the bot ourselves.
-# First, we must define how we want the model to decode the encoded input.
+# First, you must define how you want the model to decode the encoded input.
 #
 # Greedy decoding
 # ~~~~~~~~~~~~~~~
 #
-# Greedy decoding is the decoding method that we use during training when
-# we are **NOT** using teacher forcing. In other words, for each time
-# step, we simply choose the word from ``decoder_output`` with the highest
+# Greedy decoding is the decoding method that the program is using during training when
+# it is **NOT** using teacher forcing. In other words, for each time
+# step, it simply chooses the word from ``decoder_output`` with the highest
 # softmax value. This decoding method is optimal on a single time-step
 # level.
 #
-# To facilite the greedy decoding operation, we define a
+# To facilite the greedy decoding operation, you must define a
 # ``GreedySearchDecoder`` class. When run, an object of this class takes
 # an input sequence (``input_seq``) of shape *(input_seq length, 1)*, a
 # scalar input length (``input_length``) tensor, and a ``max_length`` to
@@ -73,32 +73,30 @@ class GreedySearchDecoder(nn.Module):
         return all_tokens, all_scores
 
 ######################################################################
-# Evaluate my text
+# Evaluate the text
 # ~~~~~~~~~~~~~~~~
-#
-# Now that we have our decoding method defined, we can write functions for
-# evaluating a string input sentence. The ``evaluate`` function manages
-# the low-level process of handling the input sentence. We first format
-# the sentence as an input batch of word indexes with *batch_size==1*. We
-# do this by converting the words of the sentence to their corresponding
-# indexes, and transposing the dimensions to prepare the tensor for our
-# models. We also create a ``lengths`` tensor which contains the length of
-# our input sentence. In this case, ``lengths`` is scalar because we are
-# only evaluating one sentence at a time (batch_size==1). Next, we obtain
-# the decoded response sentence tensor using our ``GreedySearchDecoder``
-# object (``searcher``). Finally, we convert the response’s indexes to
+# The ``evaluate`` function manages the low-level process of handling the
+# input sentence. it first formats the sentence as an
+# input batch of word indexes with *batch_size==1*. it does this by converting
+# the words of the sentence to their corresponding indexes,
+# and transposing the dimensions to prepare the tensor for your
+# models. It also creates a ``lengths`` tensor which contains the length of
+# your input sentence. In this case, ``lengths`` is scalar because it is
+# only evaluating one sentence at a time (batch_size==1). Next, it obtains
+# the decoded response sentence tensor using the ``GreedySearchDecoder``
+# object (``searcher``). Finally, it converts the response’s indexes to
 # words and return the list of decoded words.
 #
-# ``evaluateInput`` acts as the user interface for our chatbot. When
-# called, an input text field will spawn in which we can enter our query
-# sentence. After typing our input sentence and pressing *Enter*, our text
-# is normalized in the same way as our training data, and is ultimately
-# fed to the ``evaluate`` function to obtain a decoded output sentence. We
-# loop this process, so we can keep chatting with our bot until we enter
+# ``evaluateInput`` acts as the user interface for the chatbot. When
+# called, an input text field will spawn in which you can enter your query
+# sentence. After typing your input sentence and pressing *Enter*, your text
+# is normalized in the same way as the training data, and is ultimately
+# fed to the ``evaluate`` function to obtain a decoded output sentence. it
+# loops this process, so you can keep chatting with the bot until you enter
 # either “q” or “quit”.
 #
 # Finally, if a sentence is entered that contains a word that is not in
-# the vocabulary, we handle this gracefully by printing an error message
+# the vocabulary, it handles this gracefully by printing an error message
 # and prompting the user to enter another sentence.
 #
 
@@ -147,7 +145,7 @@ encoder.eval()
 decoder.eval()
 
 # Initialize search module
-searcher = GreedySearchDecoder(encoder, decoder)
+#searcher = GreedySearchDecoder(encoder, decoder)
 
 # Begin chatting (uncomment and run the following line to begin)
-evaluateInput(encoder, decoder, searcher, voc)
+#evaluateInput(encoder, decoder, searcher, voc)

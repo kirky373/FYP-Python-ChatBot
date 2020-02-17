@@ -6,11 +6,11 @@
 # query/response sentence pairs into memory.
 #
 # Note that we are dealing with sequences of **words**, which do not have
-# an implicit mapping to a discrete numerical space. Thus, we must create
-# one by mapping each unique word that we encounter in our dataset to an
+# an implicit mapping to a discrete numerical space. Thus, the program must create
+# one by mapping each unique word that it encounters in the dataset to an
 # index value.
 #
-# For this we define a ``Voc`` class, which keeps a mapping from words to
+# For this it defines a ``Voc`` class, which keeps a mapping from words to
 # indexes, a reverse mapping of indexes to words, a count of each word and
 # a total word count. The class provides methods for adding a word to the
 # vocabulary (``addWord``), adding all words in a sentence
@@ -18,8 +18,6 @@
 #
 import codecs
 import csv
-
-import torch
 import re
 import os
 import unicodedata
@@ -30,7 +28,7 @@ from config import MAX_LENGTH, corpus, corpus_name
 # Create formatted data file
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~
 #
-# For convenience, we'll create a nicely formatted data file in which each line
+# For convenience, it creates a nicely formatted data file in which each line
 # contains a tab-separated *query sentence* and a *response sentence* pair.
 #
 # The following functions facilitate the parsing of the raw
@@ -84,19 +82,13 @@ def extractSentencePairs(conversations):
     qa_pairs = []
     for conversation in conversations:
         # Iterate over all the lines of the conversation
-        for i in range(len(conversation["lines"]) - 1):  # We ignore the last line (no answer for it)
+        for i in range(len(conversation["lines"]) - 1):  # Ignore the last line (no answer for it)
             inputLine = conversation["lines"][i]["text"].strip()
             targetLine = conversation["lines"][i+1]["text"].strip()
             # Filter wrong samples (if one of the lists is empty)
             if inputLine and targetLine:
                 qa_pairs.append([inputLine, targetLine])
     return qa_pairs
-
-
-######################################################################
-# Now we’ll call these functions and create the file. We’ll call it
-# *formatted_movie_lines.txt*.
-#
 
 # Define path to new file
 datafile = os.path.join(corpus, "formatted_movie_lines.txt")
@@ -185,14 +177,14 @@ class Voc:
             self.addWord(word)
 
 ######################################################################
-# Now we can assemble our vocabulary and query/response sentence pairs.
-# Before we are ready to use this data, we must perform some
+# Now it can assemble the vocabulary and query/response sentence pairs.
+# Before the program is ready to use this data, it must perform some
 # preprocessing.
 #
-# First, we must convert the Unicode strings to ASCII using
-# ``unicodeToAscii``. Next, we should convert all letters to lowercase and
+# First, it must convert the Unicode strings to ASCII using
+# ``unicodeToAscii``. Next, it should convert all letters to lowercase and
 # trim all non-letter characters except for basic punctuation
-# (``normalizeString``). Finally, to aid in training convergence, we will
+# (``normalizeString``). Finally, to aid in training convergence, it will
 # filter out sentences with length greater than the ``MAX_LENGTH``
 # threshold (``filterPairs``).
 #
@@ -250,6 +242,3 @@ voc, pairs = loadPrepareData(corpus, corpus_name, datafile, save_dir)
 print("\npairs:")
 for pair in pairs[:10]:
     print(pair)
-
-
-

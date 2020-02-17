@@ -1,11 +1,90 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+######################################################################
+# Define Models
+# -------------
+#
+# Seq2Seq Model
+# ~~~~~~~~~~~~~
+#
+# The brains of the chatbot is a sequence-to-sequence (seq2seq) model. The
+# goal of a seq2seq model is to take a variable-length sequence as an
+# input, and return a variable-length sequence as an output using a
+# fixed-sized model.
+#
+# `Sutskever et al. <https://arxiv.org/abs/1409.3215>`__ discovered that
+# by using two separate recurrent neural nets together, we can accomplish
+# this task. One RNN acts as an **encoder**, which encodes a variable
+# length input sequence to a fixed-length context vector. In theory, this
+# context vector (the final hidden layer of the RNN) will contain semantic
+# information about the query sentence that is input to the bot. The
+# second RNN is a **decoder**, which takes an input word and the context
+# vector, and returns a guess for the next word in the sequence and a
+# hidden state to use in the next iteration.
+#
 
 USE_CUDA = torch.cuda.is_available()
 device = torch.device('cuda' if USE_CUDA else 'cpu')
 
-
+######################################################################
+# Encoder
+# ~~~~~~~
+#
+# The encoder RNN iterates through the input sentence one token
+# (e.g. word) at a time, at each time step outputting an “output” vector
+# and a “hidden state” vector. The hidden state vector is then passed to
+# the next time step, while the output vector is recorded. The encoder
+# transforms the context it saw at each point in the sequence into a set
+# of points in a high-dimensional space, which the decoder will use to
+# generate a meaningful output for the given task.
+#
+# At the heart of the encoder is a multi-layered Gated Recurrent Unit,
+# invented by `Cho et al. <https://arxiv.org/pdf/1406.1078v3.pdf>`__ in
+# 2014. It will use a bidirectional variant of the GRU, meaning that there
+# are essentially two independent RNNs: one that is fed the input sequence
+# in normal sequential order, and one that is fed the input sequence in
+# reverse order. The outputs of each network are summed at each time step.
+# Using a bidirectional GRU will give us the advantage of encoding both
+# past and future context.
+#
+# Note that an ``embedding`` layer is used to encode the word indices in
+# an arbitrarily sized feature space. For your models, this layer will map
+# each word to a feature space of size *hidden_size*. When trained, these
+# values should encode semantic similarity between similar meaning words.
+#
+# Finally, if passing a padded batch of sequences to an RNN module, it
+# must pack and unpack padding around the RNN pass using
+# ``nn.utils.rnn.pack_padded_sequence`` and
+# ``nn.utils.rnn.pad_packed_sequence`` respectively.
+#
+# **Computation Graph:**
+#
+#    1) Convert word indexes to embeddings.
+#    2) Pack padded batch of sequences for RNN module.
+#    3) Forward pass through GRU.
+#    4) Unpack padding.
+#    5) Sum bidirectional GRU outputs.
+#    6) Return output and final hidden state.
+#
+# **Inputs:**
+#
+# -  ``input_seq``: batch of input sentences; shape=\ *(max_length,
+#    batch_size)*
+# -  ``input_lengths``: list of sentence lengths corresponding to each
+#    sentence in the batch; shape=\ *(batch_size)*
+# -  ``hidden``: hidden state; shape=\ *(n_layers x num_directions,
+#    batch_size, hidden_size)*
+#
+# **Outputs:**
+#
+# -  ``outputs``: output features from the last hidden layer of the GRU
+#    (sum of bidirectional outputs); shape=\ *(max_length, batch_size,
+#    hidden_size)*
+# -  ``hidden``: updated hidden state from GRU; shape=\ *(n_layers x
+#    num_directions, batch_size, hidden_size)*
+#
+#
 class EncoderRNN(nn.Module):
     def __init__(self, hidden_size, embedding, n_layers=1, dropout=0):
         super(EncoderRNN, self).__init__()
@@ -14,7 +93,7 @@ class EncoderRNN(nn.Module):
         self.embedding = embedding
 
         # Initialize GRU; the input_size and hidden_size params are both set to 'hidden_size'
-        #   because our input size is a word embedding with number of features == hidden_size
+        #   because the input size is a word embedding with number of features == hidden_size
         self.gru = nn.GRU(hidden_size, hidden_size, n_layers,
                           dropout=(0 if n_layers == 1 else dropout), bidirectional=True)
 
@@ -32,54 +111,49 @@ class EncoderRNN(nn.Module):
         # Return output and final hidden state
         return outputs, hidden
 
-    ######################################################################
-    # Decoder
-    # ~~~~~~~
-    #
-    # The decoder RNN generates the response sentence in a token-by-token
-    # fashion. It uses the encoder’s context vectors, and internal hidden
-    # states to generate the next word in the sequence. It continues
-    # generating words until it outputs an *EOS_token*, representing the end
-    # of the sentence. A common problem with a vanilla seq2seq decoder is that
-    # if we rely soley on the context vector to encode the entire input
-    # sequence’s meaning, it is likely that we will have information loss.
-    # This is especially the case when dealing with long input sequences,
-    # greatly limiting the capability of our decoder.
-    #
-    # To combat this, `Bahdanau et al. <https://arxiv.org/abs/1409.0473>`__
-    # created an “attention mechanism” that allows the decoder to pay
-    # attention to certain parts of the input sequence, rather than using the
-    # entire fixed context at every step.
-    #
-    # At a high level, attention is calculated using the decoder’s current
-    # hidden state and the encoder’s outputs. The output attention weights
-    # have the same shape as the input sequence, allowing us to multiply them
-    # by the encoder outputs, giving us a weighted sum which indicates the
-    #
-    # `Luong et al. <https://arxiv.org/abs/1508.04025>`__ improved upon
-    # Bahdanau et al.’s groundwork by creating “Global attention”. The key
-    # difference is that with “Global attention”, we consider all of the
-    # encoder’s hidden states, as opposed to Bahdanau et al.’s “Local
-    # attention”, which only considers the encoder’s hidden state from the
-    # current time step. Another difference is that with “Global attention”,
-    # we calculate attention weights, or energies, using the hidden state of
-    # the decoder from the current time step only. Bahdanau et al.’s attention
-    # calculation requires knowledge of the decoder’s state from the previous
-    # time step. Also, Luong et al. provides various methods to calculate the
-    # attention energies between the encoder output and decoder output which
-    # are called “score functions”:
-    #
-    # where :math:`h_t` = current target decoder state and :math:`\bar{h}_s` =
-    # all encoder states.
-    #
-    # Overall, the Global attention mechanism can be summarized by the
-    # following figure. Note that we will implement the “Attention Layer” as a
-    # separate ``nn.Module`` called ``Attn``. The output of this module is a
-    # softmax normalized weights tensor of shape *(batch_size, 1,
-    # max_length)*.
-    #
+######################################################################
+# Decoder
+# ~~~~~~~
+#
+# The decoder RNN generates the response sentence in a token-by-token
+# fashion. It uses the encoder’s context vectors, and internal hidden
+# states to generate the next word in the sequence. It continues
+# generating words until it outputs an *EOS_token*, representing the end
+# of the sentence. A common problem with a vanilla seq2seq decoder is that
+# if it relies soley on the context vector to encode the entire input
+# sequence’s meaning, it is likely that it will have information loss.
+# This is especially the case when dealing with long input sequences,
+# greatly limiting the capability of the decoder.
+#
+# To combat this, `Bahdanau et al. <https://arxiv.org/abs/1409.0473>`__
+# created an “attention mechanism” that allows the decoder to pay
+# attention to certain parts of the input sequence, rather than using the
+# entire fixed context at every step.
+#
+# At a high level, attention is calculated using the decoder’s current
+# hidden state and the encoder’s outputs. The output attention weights
+# have the same shape as the input sequence, allowing us to multiply them
+# by the encoder outputs, giving us a weighted sum which indicates the
+#
+# `Luong et al. <https://arxiv.org/abs/1508.04025>`__ improved upon
+# Bahdanau et al.’s groundwork by creating “Global attention”. The key
+# difference is that with “Global attention”, we consider all of the
+# encoder’s hidden states, as opposed to Bahdanau et al.’s “Local
+# attention”, which only considers the encoder’s hidden state from the
+# current time step. Another difference is that with “Global attention”,
+# It calculates attention weights, or energies, using the hidden state of
+# the decoder from the current time step only. Bahdanau et al.’s attention
+# calculation requires knowledge of the decoder’s state from the previous
+# time step. Also, Luong et al. provides various methods to calculate the
+# attention energies between the encoder output and decoder output which
+# are called “score functions”:
+#
+# where :math:`h_t` = current target decoder state and :math:`\bar{h}_s` =
+# all encoder states.
+#
+#
 
-    # Luong attention layer
+# Luong attention layer
 class Attn(nn.Module):
         def __init__(self, method, hidden_size):
             super(Attn, self).__init__()
@@ -136,9 +210,8 @@ class Attn(nn.Module):
                 return energy
 
 ######################################################################
-# Now that we have defined our attention submodule, we can implement the
-# actual decoder model. For the decoder, we will manually feed our batch
-# one time step at a time. This means that our embedded word tensor and
+# For the decoder, it will manually feed the batch
+# one time step at a time. This means that the embedded word tensor and
 # GRU output will both have shape *(1, batch_size, hidden_size)*.
 #
 # **Computation Graph:**
@@ -190,7 +263,7 @@ class LuongAttnDecoderRNN(nn.Module):
         self.attn = Attn(attn_model, hidden_size)
 
     def forward(self, input_step, last_hidden, encoder_outputs):
-        # Note: we run this one step (word) at a time
+        # Note: it runs this one step (word) at a time
         # Get embedding of current input word
         embedded = self.embedding(input_step)
         embedded = self.embedding_dropout(embedded)
